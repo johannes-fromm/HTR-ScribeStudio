@@ -10,7 +10,7 @@ class ScribeStudio {
     this.currentDoc = null;
     this.imageLoaded = false;
     this.originalXmlRaw = "";
-    this.currentXmlSource = "corrected"; // "corrected" | "transkribus" | "alto" | "custom"
+    this.currentXmlSource = "corrected"; // "corrected" | "original" | "alto" | "custom"
 
     // Data Model: Regions and Lines
     this.metadata = {};
@@ -187,7 +187,7 @@ class ScribeStudio {
     this.documents.forEach((doc) => {
       const opt = document.createElement("option");
       opt.value = doc.id;
-      const status = doc.has_corrected ? "✓ (Corrected)" : (doc.has_transkribus ? "• (Original)" : "○ (Image only)");
+      const status = doc.has_corrected ? "✓ (Corrected)" : (doc.has_original_xml ? "• (Original)" : "○ (Image only)");
       opt.textContent = `${doc.id} ${status}`;
       this.docSelect.appendChild(opt);
     });
@@ -209,8 +209,8 @@ class ScribeStudio {
       if (docData.has_corrected) {
         this.sourceSelect.appendChild(new Option("Manually Corrected", "corrected"));
       }
-      if (docData.has_transkribus) {
-        this.sourceSelect.appendChild(new Option("Transkribus Original", "transkribus"));
+      if (docData.has_original_xml) {
+        this.sourceSelect.appendChild(new Option("Original XML", "original"));
       }
       if (docData.has_alto) {
         this.sourceSelect.appendChild(new Option("ALTO XML (Kraken)", "alto"));
@@ -219,7 +219,7 @@ class ScribeStudio {
         this.sourceSelect.appendChild(new Option("No XML available", "none"));
       }
 
-      const activeSource = preferredSource || docData.xml_source || "transkribus";
+      const activeSource = preferredSource || docData.xml_source || "original";
       this.sourceSelect.value = activeSource;
       this.currentXmlSource = activeSource;
 
@@ -1215,7 +1215,7 @@ class ScribeStudio {
     }
 
     const pageXml = this.serializeToPageXml();
-    this.showLoading("Saving XML to transkribus_manually_corrected...");
+    this.showLoading("Saving XML to manually_corrected...");
 
     try {
       const resp = await fetch("/api/save", {

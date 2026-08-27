@@ -35,9 +35,6 @@ class ScribeConfig:
             candidates = [
                 TOOL_DIR / "sample_data" / "images",
                 TOOL_DIR / "data" / "images",
-                project_dir / "letters" / "image" / "resized",
-                project_dir / "letters" / "image" / "resized_images_1024",
-                project_dir / "letters" / "image",
                 TOOL_DIR / "images"
             ]
             for c in candidates:
@@ -50,10 +47,8 @@ class ScribeConfig:
         else:
             self.xml_dirs = []
             candidates = [
-                TOOL_DIR / "sample_data" / "transkribus",
-                TOOL_DIR / "data" / "transkribus",
-                project_dir / "transkribus",
-                project_dir / "letters" / "kraken_alto_xml_resized_images_1024",
+                TOOL_DIR / "sample_data" / "xml",
+                TOOL_DIR / "data" / "xml",
                 TOOL_DIR / "xml"
             ]
             for c in candidates:
@@ -64,10 +59,10 @@ class ScribeConfig:
         if output_dir:
             self.output_dir = Path(output_dir).resolve()
         else:
-            if (project_dir / "transkribus_manually_corrected").exists():
-                self.output_dir = (project_dir / "transkribus_manually_corrected").resolve()
+            if (project_dir / "manually_corrected").exists():
+                self.output_dir = (project_dir / "manually_corrected").resolve()
             elif (TOOL_DIR / "sample_data").exists():
-                self.output_dir = (TOOL_DIR / "sample_data" / "transkribus_manually_corrected").resolve()
+                self.output_dir = (TOOL_DIR / "sample_data" / "manually_corrected").resolve()
             else:
                 self.output_dir = (TOOL_DIR / "corrected_xml").resolve()
 
@@ -131,7 +126,7 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
         elif path == "/api/xml":
             file_path = query.get("path", [""])[0]
             doc_id = query.get("id", [""])[0]
-            source = query.get("source", ["transkribus"])[0]
+            source = query.get("source", ["original"])[0]
             self.handle_get_xml(file_path, doc_id, source)
         else:
             super().do_GET()
@@ -168,10 +163,10 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
                                 "id": base_id,
                                 "image_filename": img_file.name,
                                 "has_image": True,
-                                "has_transkribus": False,
+                                "has_original_xml": False,
                                 "has_corrected": False,
                                 "has_alto": False,
-                                "transkribus_path": None,
+                                "original_xml_path": None,
                                 "corrected_path": None,
                                 "alto_path": None
                             }
@@ -187,16 +182,16 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
                                 "id": base_id,
                                 "image_filename": f"{base_id}.jpg",
                                 "has_image": find_image_file(base_id) is not None,
-                                "has_transkribus": True,
+                                "has_original_xml": True,
                                 "has_corrected": False,
                                 "has_alto": False,
-                                "transkribus_path": str(xml_file),
+                                "original_xml_path": str(xml_file),
                                 "corrected_path": None,
                                 "alto_path": None
                             }
                         else:
-                            docs[base_id]["has_transkribus"] = True
-                            docs[base_id]["transkribus_path"] = str(xml_file)
+                            docs[base_id]["has_original_xml"] = True
+                            docs[base_id]["original_xml_path"] = str(xml_file)
 
         # 3. Check Corrected XML Directory
         if config.output_dir.exists():
@@ -211,10 +206,10 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
                             "id": base_id,
                             "image_filename": f"{base_id}.jpg",
                             "has_image": find_image_file(base_id) is not None,
-                            "has_transkribus": False,
+                            "has_original_xml": False,
                             "has_corrected": True,
                             "has_alto": False,
-                            "transkribus_path": None,
+                            "original_xml_path": None,
                             "corrected_path": str(xml_file),
                             "alto_path": None
                         }
@@ -248,7 +243,7 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
             xml_path = str(corrected_xml)
             xml_content = corrected_xml.read_text(encoding="utf-8", errors="replace")
         elif orig_xml and orig_xml.exists():
-            xml_source = "transkribus"
+            xml_source = "original"
             xml_path = str(orig_xml)
             xml_content = orig_xml.read_text(encoding="utf-8", errors="replace")
 
@@ -261,7 +256,7 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
             "xml_path": xml_path,
             "xml_content": xml_content,
             "has_corrected": corrected_xml.exists(),
-            "has_transkribus": orig_xml is not None and orig_xml.exists(),
+            "has_original_xml": orig_xml is not None and orig_xml.exists(),
             "has_alto": False
         }
         self._send_json(response_data)
