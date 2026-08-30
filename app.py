@@ -41,7 +41,7 @@ class ScribeConfig:
                 if c.exists():
                     self.image_dirs.append(c.resolve())
 
-        # 2. Original / Input XML directory
+        # 2. Original / Input annotation directory (XML and Surya JSON)
         if xml_dir:
             self.xml_dirs = [Path(xml_dir).resolve()]
         else:
@@ -55,7 +55,7 @@ class ScribeConfig:
                 if c.exists():
                     self.xml_dirs.append(c.resolve())
 
-        # 3. Output / Corrected XML directory
+        # 3. Output / Corrected annotation directory
         if output_dir:
             self.output_dir = Path(output_dir).resolve()
         else:
@@ -164,6 +164,7 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
                                 "image_filename": img_file.name,
                                 "has_image": True,
                                 "has_original_xml": False,
+                                "has_original_json": False,
                                 "has_corrected": False,
                                 "has_alto": False,
                                 "original_xml_path": None,
@@ -171,32 +172,38 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
                                 "alto_path": None
                             }
 
-        # 2. Check XMLs
+        # 2. Check XML and JSON annotations
         for xml_dir in config.xml_dirs:
             if xml_dir.exists():
                 for xml_file in sorted(xml_dir.iterdir()):
-                    if xml_file.is_file() and not xml_file.name.startswith(".") and xml_file.suffix.lower() == ".xml":
+                    if xml_file.is_file() and not xml_file.name.startswith(".") and xml_file.suffix.lower() in (".xml", ".json"):
                         base_id = xml_file.stem
                         if base_id not in docs:
                             docs[base_id] = {
                                 "id": base_id,
                                 "image_filename": f"{base_id}.jpg",
                                 "has_image": find_image_file(base_id) is not None,
-                                "has_original_xml": True,
+                                "has_original_xml": xml_file.suffix.lower() == ".xml",
+                                "has_original_json": xml_file.suffix.lower() == ".json",
                                 "has_corrected": False,
                                 "has_alto": False,
-                                "original_xml_path": str(xml_file),
+                                "original_xml_path": str(xml_file) if xml_file.suffix.lower() == ".xml" else None,
+                                "original_json_path": str(xml_file) if xml_file.suffix.lower() == ".json" else None,
                                 "corrected_path": None,
                                 "alto_path": None
                             }
                         else:
-                            docs[base_id]["has_original_xml"] = True
-                            docs[base_id]["original_xml_path"] = str(xml_file)
+                            if xml_file.suffix.lower() == ".xml":
+                                docs[base_id]["has_original_xml"] = True
+                                docs[base_id]["original_xml_path"] = str(xml_file)
+                        if xml_file.suffix.lower() == ".json":
+                            docs[base_id]["has_original_json"] = True
+                            docs[base_id]["original_json_path"] = str(xml_file)
 
         # 3. Check Corrected XML Directory
         if config.output_dir.exists():
             for xml_file in sorted(config.output_dir.iterdir()):
-                if xml_file.is_file() and not xml_file.name.startswith(".") and xml_file.suffix.lower() == ".xml":
+                if xml_file.is_file() and not xml_file.name.startswith(".") and xml_file.suffix.lower() in (".xml", ".json"):
                     base_id = xml_file.stem
                     if base_id in docs:
                         docs[base_id]["has_corrected"] = True
@@ -207,9 +214,11 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
                             "image_filename": f"{base_id}.jpg",
                             "has_image": find_image_file(base_id) is not None,
                             "has_original_xml": False,
+                            "has_original_json": False,
                             "has_corrected": True,
                             "has_alto": False,
                             "original_xml_path": None,
+                            "original_json_path": None,
                             "corrected_path": str(xml_file),
                             "alto_path": None
                         }
@@ -227,25 +236,36 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
         img_path = find_image_file(doc_id, prefer_resized=prefer_resized)
 
         corrected_xml = config.output_dir / f"{doc_id}.xml"
+        corrected_json = config.output_dir / f"{doc_id}.json"
         orig_xml = None
+        orig_json = None
         for xdir in config.xml_dirs:
-            candidate = xdir / f"{doc_id}.xml"
-            if candidate.exists():
-                orig_xml = candidate
-                break
+            for suffix in (".xml", ".json"):
+                candidate = xdir / f"{doc_id}{suffix}"
+                if candidate.exists():
+                    if suffix == ".xml":
+                        orig_xml = candidate
+                    else:
+                        orig_json = candidate
+                    break
 
         xml_source = None
         xml_content = None
         xml_path = None
 
-        if corrected_xml.exists():
+        if corrected_xml.exists() or corrected_json.exists():
             xml_source = "corrected"
-            xml_path = str(corrected_xml)
-            xml_content = corrected_xml.read_text(encoding="utf-8", errors="replace")
+            target = corrected_xml if corrected_xml.exists() else corrected_json
+            xml_path = str(target)
+            xml_content = target.read_text(encoding="utf-8", errors="replace")
         elif orig_xml and orig_xml.exists():
             xml_source = "original"
             xml_path = str(orig_xml)
             xml_content = orig_xml.read_text(encoding="utf-8", errors="replace")
+        elif orig_json and orig_json.exists():
+            xml_source = "original_json"
+            xml_path = str(orig_json)
+            xml_content = orig_json.read_text(encoding="utf-8", errors="replace")
 
         response_data = {
             "id": doc_id,
@@ -257,7 +277,9 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
             "xml_content": xml_content,
             "has_corrected": corrected_xml.exists(),
             "has_original_xml": orig_xml is not None and orig_xml.exists(),
-            "has_alto": False
+            "has_original_json": orig_json is not None and orig_json.exists(),
+            "has_alto": False,
+            "has_json": corrected_json.exists() or (orig_json is not None and orig_json.exists())
         }
         self._send_json(response_data)
 
@@ -297,15 +319,20 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
         elif doc_id:
             if source == "corrected":
                 target_path = config.output_dir / f"{doc_id}.xml"
+                if not target_path.exists():
+                    target_path = config.output_dir / f"{doc_id}.json"
             else:
                 for xdir in config.xml_dirs:
-                    cand = xdir / f"{doc_id}.xml"
-                    if cand.exists():
-                        target_path = cand
+                    for suffix in (".xml", ".json"):
+                        cand = xdir / f"{doc_id}{suffix}"
+                        if cand.exists() and (source != "original_json" or suffix == ".json"):
+                            target_path = cand
+                            break
+                    if target_path:
                         break
 
         if not target_path or not target_path.exists() or not target_path.is_file():
-            self.send_error(404, "XML file not found")
+            self.send_error(404, "Annotation file not found")
             return
 
         try:
@@ -320,7 +347,7 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
             self._send_json({"error": f"Failed to read XML: {e}"}, 500)
 
     def handle_save_xml(self):
-        """Saves edited XML to output directory or custom path."""
+        """Saves edited XML or Surya JSON to the output directory."""
         try:
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode("utf-8")
@@ -328,17 +355,20 @@ class ScribeStudioHandler(SimpleHTTPRequestHandler):
 
             doc_id = data.get("id")
             xml_content = data.get("xml_content")
+            json_content = data.get("json_content")
+            file_format = data.get("format", "xml")
             destination = data.get("destination", "corrected")
 
-            if not doc_id or not xml_content:
-                self._send_json({"error": "Missing 'id' or 'xml_content' in payload"}, 400)
+            content = json_content if file_format == "json" else xml_content
+            if not doc_id or not content:
+                self._send_json({"error": "Missing document id or annotation content"}, 400)
                 return
 
-            target_file = config.output_dir / f"{doc_id}.xml"
+            target_file = config.output_dir / f"{doc_id}.json" if file_format == "json" else config.output_dir / f"{doc_id}.xml"
             target_file.parent.mkdir(parents=True, exist_ok=True)
 
-            temp_file = target_file.with_suffix(".tmp")
-            temp_file.write_text(xml_content, encoding="utf-8")
+            temp_file = target_file.with_suffix(target_file.suffix + ".tmp")
+            temp_file.write_text(content, encoding="utf-8")
             temp_file.replace(target_file)
 
             self._send_json({

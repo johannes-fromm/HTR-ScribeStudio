@@ -10,6 +10,9 @@ class ScribeStudio {
     this.currentDoc = null;
     this.imageLoaded = false;
     this.originalXmlRaw = "";
+    this.originalJsonData = null;
+    this.jsonLineObjects = [];
+    this.currentFormat = "xml";
     this.currentXmlSource = "corrected"; // "corrected" | "original" | "alto" | "custom"
 
     // Data Model: Regions and Lines
@@ -74,6 +77,7 @@ class ScribeStudio {
     this.exportDropdown = document.getElementById("exportDropdown");
     this.exportPageXmlBtn = document.getElementById("exportPageXmlBtn");
     this.exportAltoXmlBtn = document.getElementById("exportAltoXmlBtn");
+    this.exportSuryaJsonBtn = document.getElementById("exportSuryaJsonBtn");
     this.exportTxtBtn = document.getElementById("exportTxtBtn");
     this.exportCsvBtn = document.getElementById("exportCsvBtn");
     this.undoBtn = document.getElementById("undoBtn");
@@ -187,7 +191,7 @@ class ScribeStudio {
     this.documents.forEach((doc) => {
       const opt = document.createElement("option");
       opt.value = doc.id;
-      const status = doc.has_corrected ? "✓ (Corrected)" : (doc.has_original_xml ? "• (Original)" : "○ (Image only)");
+      const status = doc.has_corrected ? "✓ (Corrected)" : (doc.has_original_xml || doc.has_original_json ? "• (Original)" : "○ (Image only)");
       opt.textContent = `${doc.id} ${status}`;
       this.docSelect.appendChild(opt);
     });
@@ -212,6 +216,9 @@ class ScribeStudio {
       if (docData.has_original_xml) {
         this.sourceSelect.appendChild(new Option("Original XML", "original"));
       }
+      if (docData.has_original_json) {
+        this.sourceSelect.appendChild(new Option("Surya JSON", "original_json"));
+      }
       if (docData.has_alto) {
         this.sourceSelect.appendChild(new Option("ALTO XML (Kraken)", "alto"));
       }
@@ -230,10 +237,10 @@ class ScribeStudio {
         this.clearImage();
       }
 
-      // Parse XML with automatic coordinate scaling to match image
+      // Parse XML or JSON with automatic coordinate scaling to match image
       if (docData.xml_content) {
         this.originalXmlRaw = docData.xml_content;
-        this.parseXmlContent(docData.xml_content);
+        this.parseAnnotationContent(docData.xml_content);
       } else {
         this.originalXmlRaw = "";
         this.lines = [];
@@ -277,7 +284,7 @@ class ScribeStudio {
       const data = await resp.json();
       this.currentXmlSource = source;
       this.originalXmlRaw = data.content;
-      this.parseXmlContent(data.content);
+      this.parseAnnotationContent(data.content);
       this.resetHistory();
       this.setDirty(false);
       this.renderCanvas();
@@ -331,10 +338,8 @@ class ScribeStudio {
     if (parseError) {
       throw new Error("Invalid XML document: " + parseError.textContent);
     }
-
     this.lines = [];
     this.regions = [];
-
     if (xmlDoc.querySelector("PcGts") || xmlDoc.querySelector("Page")) {
       this.parsePageXml(xmlDoc);
     } else if (xmlDoc.querySelector("alto")) {
@@ -343,6 +348,110 @@ class ScribeStudio {
       throw new Error("Unrecognized XML format (expected PAGE-XML or ALTO)");
     }
   }
+
+  parseAnnotationContent(content) {
+      const trimmed = content.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        this.currentFormat = "json";
+        this.parseJsonContent(content);
+      } else {
+        this.currentFormat = "xml";
+        this.parseXmlContent(content);
+      }
+    }
+
+    parseJsonContent(jsonString) {
+      let data;
+      try {
+        data = JSON.parse(jsonString);
+      } catch (e) {
+        throw new Error(`Invalid JSON document: ${e.message}`);
+      }
+
+      this.originalJsonData = data;
+      this.jsonLineObjects = [];
+      this.lines = [];
+      this.regions = [];
+      this.xmlDimensions = { width: 0, height: 0 };
+
+      const visit = (value, path = []) => {
+        if (!value || typeof value !== "object") return;
+        if (Array.isArray(value)) {
+          value.forEach((item, index) => visit(item, path.concat(index)));
+          return;
+        }
+
+        const polygon = this.jsonGeometry(value, "polygon") || this.jsonGeometry(value, "points") ||
+          this.jsonGeometry(value, "coords");
+        const bbox = Array.isArray(value.bbox) && value.bbox.length >= 4 ? value.bbox : null;
+        const textKey = ["text", "transcription", "transcript", "contents", "value"].find(k => typeof value[k] === "string");
+        if (polygon || bbox || textKey) {
+          const coords = polygon || this.bboxToPoints(bbox);
+          if (coords.length >= 2) {
+            const text = textKey ? value[textKey] : "";
+            const index = this.lines.length;
+            this.jsonLineObjects.push({ object: value, polygonKey: polygon ? (value.polygon ? "polygon" : value.points ? "points" : "coords") : null, bboxKey: bbox ? "bbox" : null, textKey, path });
+            this.lines.push({
+              id: value.id || value.line_id || value.label || `line_${index + 1}`,
+              regionId: value.region_id || "region_1",
+              coords,
+              baseline: this.jsonGeometry(value, "baseline") || [],
+              text,
+              originalText: text,
+              order: value.order || index + 1,
+              custom: ""
+            });
+            return;
+          }
+        }
+        Object.keys(value).forEach(key => visit(value[key], path.concat(key)));
+      };
+      visit(data);
+
+      const dimensions = this.findJsonDimensions(data);
+      this.xmlDimensions = dimensions;
+      if (!this.imageLoaded && dimensions.width && dimensions.height) {
+        this.imageDimensions = dimensions;
+        this.vectorOverlay.setAttribute("viewBox", `0 0 ${dimensions.width} ${dimensions.height}`);
+      }
+      this.coordScale = { scaleX: 1, scaleY: 1 };
+    }
+
+    jsonGeometry(value, key) {
+      const points = value && value[key];
+      if (!Array.isArray(points)) return null;
+      if (points.length >= 2 && Array.isArray(points[0])) {
+        return points.map(point => [Number(point[0]) || 0, Number(point[1]) || 0]);
+      }
+      return null;
+    }
+
+    bboxToPoints(bbox) {
+      if (!bbox) return [];
+      const [x1, y1, x2, y2] = bbox.map(Number);
+      if (![x1, y1, x2, y2].every(Number.isFinite)) return [];
+      return [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
+    }
+
+    findJsonDimensions(data) {
+      let result = { width: 0, height: 0 };
+      const visit = value => {
+        if (!value || typeof value !== "object" || (result.width && result.height)) return;
+        if (!Array.isArray(value)) {
+          const width = Number(value.width || value.image_width || value.imageWidth);
+          const height = Number(value.height || value.image_height || value.imageHeight);
+          if (width > 0 && height > 0) {
+            result = { width, height };
+            return;
+          }
+          Object.values(value).forEach(visit);
+        } else {
+          value.forEach(visit);
+        }
+      };
+      visit(data);
+      return result;
+    }
 
   parsePageXml(xmlDoc) {
     const metadataEl = xmlDoc.querySelector("Metadata");
@@ -521,6 +630,38 @@ class ScribeStudio {
   // =========================================================================
   // XML Serialization (Preserving Original Coordinate Systems)
   // =========================================================================
+
+  serializeToSuryaJson() {
+    const data = this.originalJsonData ? structuredClone(this.originalJsonData) : { text_lines: [] };
+    const targets = [];
+    const visit = value => {
+      if (!value || typeof value !== "object") return;
+      if (Array.isArray(value)) return value.forEach(visit);
+      if (value.polygon || value.points || value.coords || value.bbox ||
+          ["text", "transcription", "transcript", "contents", "value"].some(k => typeof value[k] === "string")) {
+        targets.push(value);
+        return;
+      }
+      Object.values(value).forEach(visit);
+    };
+    visit(data);
+
+    this.lines.forEach((line, index) => {
+      const target = targets[index] || {};
+      const points = line.coords.map(([x, y]) => [Math.round(x), Math.round(y)]);
+      const box = this.getPointsBoundingBox(line.coords);
+      const polygonKey = target.polygon ? "polygon" : target.points ? "points" : target.coords ? "coords" : "polygon";
+      target[polygonKey] = points;
+      if (target.bbox) target.bbox = [box.x, box.y, box.x + box.w, box.y + box.h];
+      const textKey = ["text", "transcription", "transcript", "contents", "value"].find(k => typeof target[k] === "string") || "text";
+      target[textKey] = line.text || "";
+      if (!targets[index]) {
+        if (!Array.isArray(data.text_lines)) data.text_lines = [];
+        data.text_lines.push(target);
+      }
+    });
+    return JSON.stringify(data, null, 2) + "\n";
+  }
 
   serializeToPageXml() {
     const imgFilename = (this.currentDoc && this.currentDoc.id ? `${this.currentDoc.id}.jpg` : "image.jpg");
@@ -1210,12 +1351,13 @@ class ScribeStudio {
   async saveToServer() {
     this.saveCurrentLineTranscript();
     if (!this.currentDoc || !this.currentDoc.id) {
-      this.exportPageXml();
+      this.currentFormat === "json" ? this.exportSuryaJson() : this.exportPageXml();
       return;
     }
 
-    const pageXml = this.serializeToPageXml();
-    this.showLoading("Saving XML to manually_corrected...");
+    const isJson = this.currentFormat === "json";
+    const content = isJson ? this.serializeToSuryaJson() : this.serializeToPageXml();
+    this.showLoading(`Saving ${isJson ? "JSON" : "XML"} to manually_corrected...`);
 
     try {
       const resp = await fetch("/api/save", {
@@ -1223,7 +1365,9 @@ class ScribeStudio {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: this.currentDoc.id,
-          xml_content: pageXml,
+          xml_content: isJson ? "" : content,
+          json_content: isJson ? content : "",
+          format: isJson ? "json" : "xml",
           destination: "corrected"
         })
       });
@@ -1233,13 +1377,13 @@ class ScribeStudio {
 
       this.hideLoading();
       this.setDirty(false);
-      this.showToast(`Saved ${this.currentDoc.id}.xml to manually corrected!`, "success");
+      this.showToast(`Saved ${this.currentDoc.id}.${isJson ? "json" : "xml"} to manually corrected!`, "success");
 
       if (this.currentDoc) this.currentDoc.has_corrected = true;
     } catch (e) {
       this.hideLoading();
       this.showToast(`Server save failed: ${e.message}. Downloading file instead.`, "error");
-      this.exportPageXml();
+      isJson ? this.exportSuryaJson() : this.exportPageXml();
     }
   }
 
@@ -1253,6 +1397,12 @@ class ScribeStudio {
     const xml = this.serializeToAltoXml();
     const filename = `${(this.currentDoc && this.currentDoc.id) || "transcription"}_alto.xml`;
     this.downloadFile(xml, filename, "application/xml");
+  }
+
+  exportSuryaJson() {
+    const json = this.serializeToSuryaJson();
+    const filename = `${(this.currentDoc && this.currentDoc.id) || "transcription"}.json`;
+    this.downloadFile(json, filename, "application/json");
   }
 
   exportPlainText() {
@@ -1325,6 +1475,7 @@ class ScribeStudio {
 
     this.exportPageXmlBtn.addEventListener("click", () => this.exportPageXml());
     this.exportAltoXmlBtn.addEventListener("click", () => this.exportAltoXml());
+    this.exportSuryaJsonBtn.addEventListener("click", () => this.exportSuryaJson());
     this.exportTxtBtn.addEventListener("click", () => this.exportPlainText());
     this.exportCsvBtn.addEventListener("click", () => this.exportCsv());
 
@@ -1376,7 +1527,7 @@ class ScribeStudio {
       this.modalDropZone.classList.remove("dragover");
       const files = Array.from(e.dataTransfer.files);
       const imgFile = files.find(f => f.type.startsWith("image/"));
-      const xmlFile = files.find(f => f.name.endsWith(".xml") || f.type.includes("xml"));
+      const xmlFile = files.find(f => f.name.endsWith(".xml") || f.name.endsWith(".json") || f.type.includes("xml") || f.type.includes("json"));
 
       if (imgFile) {
         this.modalImagePicker.files = e.dataTransfer.files;
@@ -1384,6 +1535,9 @@ class ScribeStudio {
         this.modalLoadConfirmBtn.disabled = false;
       }
       if (xmlFile) {
+        const transfer = new DataTransfer();
+        transfer.items.add(xmlFile);
+        this.modalXmlPicker.files = transfer.files;
         this.modalXmlSelectedName.textContent = xmlFile.name;
       }
     });
@@ -1686,7 +1840,7 @@ class ScribeStudio {
     if (xmlFile) {
       const xmlText = await xmlFile.text();
       this.originalXmlRaw = xmlText;
-      this.parseXmlContent(xmlText);
+      this.parseAnnotationContent(xmlText);
     } else {
       this.lines = [];
       this.regions = [];

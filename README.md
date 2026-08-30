@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Python-3.8+-3776AB?style=flat&logo=python&logoColor=white" alt="Python 3.8+"/>
   <img src="https://img.shields.io/badge/Dependencies-Zero-success?style=flat" alt="Zero Dependencies"/>
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/>
-  <img src="https://img.shields.io/badge/Format-PAGE--XML%20%7C%20ALTO-orange" alt="Formats: PAGE-XML, ALTO"/>
+  <img src="https://img.shields.io/badge/Format-PAGE--XML%20%7C%20ALTO%20%7C%20Surya%20JSON-orange" alt="Formats: PAGE-XML, ALTO, Surya JSON"/>
 </p>
 
 ---
@@ -20,7 +20,7 @@ Historical document transcription and ground-truth validation often suffer from 
 **ScribeStudio** is built as a zero-dependency, ultra-responsive tool designed specifically for:
 - Rapid transcription verification and correction with automatic line focus snippets.
 - Real-time segmentation geometry inspection and polygon vertex adjustments.
-- 100% schema-compliant **PAGE-XML** and **ALTO-XML** parsing and saving.
+- **PAGE-XML**, **ALTO-XML**, and common **Surya JSON** output parsing, editing, and saving.
 - Complete data privacy: runs 100% locally on your machine with no data transmitted over the network.
 
 ---
@@ -97,7 +97,7 @@ python3 app.py --images-dir /path/to/scans \
 | Flag | Description | Default |
 | :--- | :--- | :--- |
 | `--images-dir` | Path to directory containing document scans | Auto-detected |
-| `--xml-dir` | Path to directory containing input XML files | Auto-detected |
+| `--xml-dir` | Path to directory containing input XML or Surya JSON files | Auto-detected |
 | `--output-dir` | Path where corrected XMLs will be saved | `./corrected_xml` |
 | `--port` | Port to bind local HTTP server | `8000` |
 | `--host` | Host address | `127.0.0.1` (Local loopback) |
