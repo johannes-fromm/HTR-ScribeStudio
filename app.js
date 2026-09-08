@@ -136,6 +136,7 @@ class ScribeStudio {
     this.lineSearchInput = document.getElementById("lineSearchInput");
     this.lineFilterSelect = document.getElementById("lineFilterSelect");
     this.linesListContainer = document.getElementById("linesListContainer");
+    this.resortLinesBtn = document.getElementById("resortLinesBtn");
     this.sidebarAddNewLineBtn = document.getElementById("sidebarAddNewLineBtn");
 
     // Modals
@@ -857,6 +858,14 @@ class ScribeStudio {
         polygon.setAttribute("class", `svg-polygon ${idx === this.selectedLineIndex ? "selected" : ""}`);
         polygon.dataset.index = idx;
 
+        polygon.addEventListener("mousedown", (e) => {
+          if (this.currentTool !== "vertices" || e.button !== 0) return;
+          e.stopPropagation();
+          if (this.selectedLineIndex !== idx) {
+            this.selectLine(idx);
+          }
+        });
+
         polygon.addEventListener("click", (e) => {
           if (this.currentTool === "draw") return;
           e.stopPropagation();
@@ -1104,6 +1113,51 @@ class ScribeStudio {
     this.renderSidebarList();
     this.selectLine(this.lines.length - 1);
     this.showToast("New line added. Type transcription below.", "success");
+  }
+
+  resortLines() {
+    if (this.lines.length < 2) {
+      this.showToast("Not enough lines to resort", "info");
+      return;
+    }
+
+    const selectedLineId = this.selectedLineIndex >= 0
+      ? this.lines[this.selectedLineIndex]?.id
+      : null;
+    const originalOrder = this.lines.map(line => line.id);
+    const getPosition = (line) => {
+      const box = this.getPointsBoundingBox(line.coords);
+      return { top: box.y, left: box.x };
+    };
+
+    const sortedLines = [...this.lines].sort((a, b) => {
+      const positionA = getPosition(a);
+      const positionB = getPosition(b);
+      return positionA.top - positionB.top || positionA.left - positionB.left;
+    });
+
+    const changed = sortedLines.some((line, index) => line.id !== originalOrder[index]);
+    if (!changed) {
+      this.showToast("Lines are already in reading order", "info");
+      return;
+    }
+
+    this.pushHistory("Resort lines");
+    this.lines = sortedLines;
+    this.lines.forEach((line, index) => {
+      line.order = index + 1;
+    });
+
+    this.selectedLineIndex = selectedLineId
+      ? this.lines.findIndex(line => line.id === selectedLineId)
+      : -1;
+    this.setDirty(true);
+    this.renderCanvas();
+    this.renderSidebarList();
+    if (this.selectedLineIndex >= 0) {
+      this.selectLine(this.selectedLineIndex);
+    }
+    this.showToast("Lines resorted top-to-bottom, then left-to-right", "success");
   }
 
   // =========================================================================
@@ -1515,6 +1569,8 @@ class ScribeStudio {
     });
 
     this.modalLoadConfirmBtn.addEventListener("click", () => this.loadCustomFilesFromPickers());
+
+    this.resortLinesBtn.addEventListener("click", () => this.resortLines());
 
     // Drag & Drop to Modal Drop Zone
     this.modalDropZone.addEventListener("dragover", (e) => {
