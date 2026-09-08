@@ -71,6 +71,7 @@ ScribeStudio will automatically launch in your default web browser at `http://12
 - **Select & Pan Mode** (<kbd>V</kbd>): Click on any line polygon to focus and edit.
 - **Vertex Mode** (<kbd>E</kbd>): Click and drag polygon vertices to adjust bounding box bounds.
 - **Draw Box Mode** (<kbd>D</kbd>): Click and drag directly on the scan to create new text lines.
+- **Resort Lines**: Reorder segmented text lines from top to bottom, then left to right, before saving or exporting.
 
 ### 💾 4. Saving & Export
 - **1-Click Local Save** (<kbd>Ctrl + S</kbd> / <kbd>Cmd + S</kbd>): Saves directly to your output directory with complete PAGE-XML metadata and coordinate preservation.
