@@ -32,13 +32,13 @@ Historical document transcription and ground-truth validation often suffer from 
 - Modern web browser (Chrome, Firefox, Safari, Edge).
 - **No external pip packages, no npm/Node.js, no Docker needed!**
 
-### Run ScribeStudio
+### Run HTR-ScribeStudio
 Clone the repository and run:
 
 ```bash
 # Clone the repository
 git clone https://github.com/johannes-fromm/HTR-ScribeStudio.git
-cd ScribeStudio
+cd HTR-ScribeStudio
 
 # Start the server (Option A)
 ./run.sh
