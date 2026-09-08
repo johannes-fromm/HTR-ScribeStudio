@@ -1,4 +1,4 @@
-# 🖋️ ScribeStudio
+# 🖋️ HTR-ScribeStudio
 
 <p align="center">
   <b>A fast, lightweight, and modern web application for handwritten text recognition (HTR) transcription correction and document segmentation ground-truthing.</b>
