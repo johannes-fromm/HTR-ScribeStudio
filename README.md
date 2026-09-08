@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Python-3.8+-3776AB?style=flat&logo=python&logoColor=white" alt="Python 3.8+"/>
   <img src="https://img.shields.io/badge/Dependencies-Zero-success?style=flat" alt="Zero Dependencies"/>
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/>
-  <img src="https://img.shields.io/badge/Format-PAGE--XML%20%7C%20ALTO%20%7C%20Surya%20JSON-orange" alt="Formats: PAGE-XML, ALTO, Surya JSON"/>
+  <img src="https://img.shields.io/badge/Format-PAGE--XML%20%7C%20ALTO%20%7C%20Surya%20JSON-orange" alt="Formats: PAGE-XML, ALTO, JSON"/>
 </p>
 
 ---
@@ -17,10 +17,10 @@
 
 Historical document transcription and ground-truth validation often suffer from heavy, bug-prone web frameworks, complex Docker setups, or sluggish polygon rendering. 
 
-**ScribeStudio** is built as a zero-dependency, ultra-responsive tool designed specifically for:
+**HTR-ScribeStudio** is built as a zero-dependency, ultra-responsive tool designed specifically for:
 - Rapid transcription verification and correction with automatic line focus snippets.
 - Real-time segmentation geometry inspection and polygon vertex adjustments.
-- **PAGE-XML**, **ALTO-XML**, and common **Surya JSON** output parsing, editing, and saving.
+- **PAGE-XML**, **ALTO-XML**, and common **JSON** output parsing, editing, and saving.
 - Complete data privacy: runs 100% locally on your machine with no data transmitted over the network.
 
 ---
@@ -37,7 +37,7 @@ Clone the repository and run:
 
 ```bash
 # Clone the repository
-git clone https://github.com/johannes-fromm/ScribeStudio.git
+git clone https://github.com/johannes-fromm/HTR-ScribeStudio.git
 cd ScribeStudio
 
 # Start the server (Option A)
@@ -86,7 +86,7 @@ ScribeStudio will automatically launch in your default web browser at `http://12
 
 ## ⚙️ CLI Options & Custom Directories
 
-You can point ScribeStudio to any custom directories using command-line arguments:
+You can point HTR-ScribeStudio to any custom directories using command-line arguments:
 
 ```bash
 python3 app.py --images-dir /path/to/scans \
@@ -129,7 +129,7 @@ python3 app.py --images-dir /path/to/scans \
 
 ## 🔒 Privacy & Local Security
 
-- ScribeStudio strictly binds to `127.0.0.1` (the local loopback network interface).
+- HTR-ScribeStudio strictly binds to `127.0.0.1` (the local loopback network interface).
 - No telemetry, no tracking, and no internet communication. All files are loaded and saved directly to your local file system.
 
 ---
